@@ -54,15 +54,15 @@ if uploaded_file:
         model.fit(X_train, y_train)
         df['risk_score'] = model.predict_proba(features)[:, 1]
 
-        # Calculate dollar_amount column from 'Item Total'
-        if 'Item Total' in df.columns:
-            df['dollar_amount'] = df['Item Total']
+        # Calculate dollar_amount column from 'Amount'
+        if 'Amount' in df.columns:
+            df['dollar_amount'] = df['Amount']
 
         # Streamlit UI
         st.title("Order Cancellation Risk Analysis Dashboard")
 
         st.subheader("📊 All Orders Preview")
-        st.dataframe(df[['Order ID', 'Status', 'Item Total', 'risk_score', 'dollar_amount']].head(10))
+        st.dataframe(df[['Order ID', 'Status', 'risk_score', 'dollar_amount']].head(10))
 
         st.write("Min Risk Score:", df['risk_score'].min())
         st.write("Max Risk Score:", df['risk_score'].max())
@@ -71,7 +71,7 @@ if uploaded_file:
         filtered = df[df['risk_score'] >= threshold]
 
         st.subheader("📦 High-Risk Orders")
-        cols_to_show = [col for col in ['Order ID', 'Category', 'ship-service-level', 'Item Total', 'dollar_amount', 'risk_score'] if col in df.columns]
+        cols_to_show = [col for col in ['Order ID', 'Category', 'ship-service-level', 'dollar_amount', 'risk_score'] if col in df.columns]
         if filtered.empty:
             st.warning("No high-risk orders found at the selected threshold. Try lowering the threshold.")
         else:
@@ -88,7 +88,7 @@ if uploaded_file:
         filtered['AI_Suggestion'] = filtered['risk_score'].apply(recommend_action)
 
         st.subheader("🧠 AI-Suggested Actions")
-        cols_to_show = [col for col in ['Order ID', 'ship-service-level', 'Item Total', 'dollar_amount', 'risk_score', 'AI_Suggestion'] if col in filtered.columns]
+        cols_to_show = [col for col in ['Order ID', 'ship-service-level', 'dollar_amount', 'risk_score', 'AI_Suggestion'] if col in filtered.columns]
         st.dataframe(filtered[cols_to_show])
 
         # Feature Importance
