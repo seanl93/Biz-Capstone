@@ -6,8 +6,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
-from imblearn.over_sampling import SMOTE  # For handling class imbalance
 from collections import Counter
+
+# Check for SMOTE availability
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+    st.warning("SMOTE not available (install with: pip install imbalanced-learn). Using class weights instead.")
 
 # Configure page
 st.set_page_config(page_title="Enhanced Cancellation Risk Dashboard", layout="wide")
@@ -25,7 +32,10 @@ if uploaded_file:
     
     # Create cancellation flag - more inclusive definition
     if 'Status' in df.columns:
-        df['cancelled'] = df['Status'].str.upper().str.contains('CANCEL|REFUND|RETURN').astype(int)
+        status_upper = df['Status'].str.upper()
+        df['cancelled'] = (status_upper.str.contains('CANCEL') | 
+                          status_upper.str.contains('REFUND') | 
+                          status_upper.str.contains('RETURN')).astype(int)
         cancellation_rate = df['cancelled'].mean()
         st.sidebar.metric("Cancellation Rate", f"{cancellation_rate*100:.1f}%")
         
@@ -46,7 +56,7 @@ if uploaded_file:
         if col in df.columns:
             df[col + '_encoded'] = LabelEncoder().fit_transform(df[col].astype(str))
 
-    # Prepare features - adding more potential predictors
+    # Prepare features
     feature_cols = [
         'rating', 'sentiment', 'Item Total', 'Quantity', 
         'Category_encoded', 'ship-service-level_encoded'
@@ -62,19 +72,21 @@ if uploaded_file:
 
     # Handle class imbalance
     st.write("### Handling Class Imbalance")
-    st.write(f"Before resampling: {Counter(labels)}")
+    st.write(f"Class distribution: {Counter(labels)}")
     
-    # Apply SMOTE oversampling only if cancellation rate is low
-    if cancellation_rate < 0.2:
+    # Apply SMOTE if available and cancellation rate is low
+    if SMOTE_AVAILABLE and cancellation_rate < 0.2:
         try:
             sm = SMOTE(random_state=42)
             features_res, labels_res = sm.fit_resample(features, labels)
             st.write(f"After SMOTE resampling: {Counter(labels_res)}")
-        except:
-            st.warning("SMOTE failed, proceeding with original data")
+        except Exception as e:
+            st.warning(f"SMOTE failed: {str(e)}. Using original data.")
             features_res, labels_res = features, labels
     else:
         features_res, labels_res = features, labels
+        if not SMOTE_AVAILABLE:
+            st.info("Using class_weight='balanced' instead of SMOTE")
 
     # Scale features
     scaler = StandardScaler()
@@ -85,12 +97,18 @@ if uploaded_file:
         X_scaled, labels_res, test_size=0.2, random_state=42
     )
 
-    # Train model with class weighting
-    model = LogisticRegression(
-        class_weight='balanced',  # Automatically adjusts for imbalanced classes
-        max_iter=1000,
-        solver='liblinear'  # Better for small datasets
-    )
+    # Train model with appropriate class handling
+    model_params = {
+        'class_weight': 'balanced',
+        'max_iter': 1000,
+        'solver': 'liblinear'
+    }
+    
+    if SMOTE_AVAILABLE and cancellation_rate < 0.2:
+        # If we used SMOTE, we don't need class weights
+        model_params['class_weight'] = None
+    
+    model = LogisticRegression(**model_params)
     model.fit(X_train, y_train)
 
     # Generate risk scores for original data
@@ -100,8 +118,9 @@ if uploaded_file:
     st.write("### Risk Score Distribution")
     risk_scores = df['risk_score']
     
-    # Calculate dynamic threshold based on percentiles
+    # Calculate thresholds based on percentiles
     threshold_options = {
+        'Auto (80th %ile)': np.percentile(risk_scores, 80),
         'Conservative (90th %ile)': np.percentile(risk_scores, 90),
         'Moderate (75th %ile)': np.percentile(risk_scores, 75),
         'Aggressive (50th %ile)': np.percentile(risk_scores, 50)
@@ -110,14 +129,21 @@ if uploaded_file:
     selected_threshold = st.selectbox(
         "Select threshold strategy:",
         list(threshold_options.keys()),
-        index=1
+        index=0
     )
     threshold = threshold_options[selected_threshold]
     
-    # Visualization of risk scores
-    st.write(f"Current threshold: {threshold:.3f}")
-    st.write(f"Risk scores range: {risk_scores.min():.3f} to {risk_scores.max():.3f}")
+    # Show risk score statistics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Minimum Risk", f"{risk_scores.min():.3f}")
+    with col2:
+        st.metric("Average Risk", f"{risk_scores.mean():.3f}")
+    with col3:
+        st.metric("Maximum Risk", f"{risk_scores.max():.3f}")
     
+    st.write(f"Current threshold: {threshold:.3f} ({selected_threshold})")
+
     # Enhanced recommendation system
     def recommend_action(row):
         risk = row['risk_score']
@@ -125,13 +151,13 @@ if uploaded_file:
         
         if risk > threshold:
             if amount > 100:
-                return "🔴 CRITICAL: High-value cancellation risk - immediate manager review"
+                return "🔴 CRITICAL: High-value cancellation risk - immediate review"
             elif risk > threshold * 1.5:
-                return "🔴 HIGH: Probable cancellation - offer discount/upgrade"
+                return "🔴 HIGH: Probable cancellation - offer discount"
             else:
-                return "🟠 MEDIUM: Potential cancellation - send reassurance email"
+                return "🟠 MEDIUM: Potential cancellation - monitor"
         elif risk > threshold * 0.7:
-            return "🟡 WATCH: Monitor for changes"
+            return "🟡 WATCH: Slight risk - standard process"
         else:
             return "🟢 OK: Normal order"
 
@@ -140,7 +166,7 @@ if uploaded_file:
     if not high_risk.empty:
         high_risk['Recommendation'] = high_risk.apply(recommend_action, axis=1)
         
-        st.subheader(f"🚨 High-Risk Orders (≥{threshold:.3f})")
+        st.subheader(f"🚨 High-Risk Orders (≥{threshold:.3f}) - {len(high_risk)} found")
         cols_to_show = [
             'Order ID', 'Status', 'risk_score', 'Item Total', 
             'Category', 'ship-service-level', 'Recommendation'
@@ -149,16 +175,21 @@ if uploaded_file:
         st.dataframe(
             high_risk[cols_to_show]
             .sort_values('risk_score', ascending=False)
-            .style.background_gradient(subset=['risk_score'], cmap='Reds')
+            .head(50)  # Limit display to top 50
         )
         
-        # Show risk distribution by category
-        if 'Category' in high_risk.columns:
-            st.subheader("High-Risk Orders by Category")
-            category_risk = high_risk.groupby('Category').size()
-            st.bar_chart(category_risk)
+        # Export option
+        if st.button("Export High-Risk Orders"):
+            csv = high_risk.to_csv(index=False)
+            st.download_button(
+                label="Download as CSV",
+                data=csv,
+                file_name="high_risk_orders.csv",
+                mime="text/csv"
+            )
     else:
         st.warning(f"No orders above current threshold ({threshold:.3f})")
+        st.info("Try selecting a less aggressive threshold strategy")
 
     # Model diagnostics
     st.subheader("🔍 Model Diagnostics")
@@ -176,28 +207,17 @@ if uploaded_file:
     if hasattr(model, 'coef_'):
         importance_df = pd.DataFrame({
             'Feature': available_features,
-            'Importance': np.abs(model.coef_[0])
-        }).sort_values('Importance', ascending=False)
+            'Coefficient': model.coef_[0],
+            'Absolute_Impact': np.abs(model.coef_[0])
+        }).sort_values('Absolute_Impact', ascending=False)
         
         st.subheader("Feature Importance")
         st.dataframe(importance_df)
-        
-        # Show top drivers of cancellations
-        top_feature = importance_df.iloc[0]['Feature']
-        st.write(f"Top cancellation driver: **{top_feature}**")
-        
-        if top_feature in df.columns:
-            st.write(f"Distribution of {top_feature} in cancellations vs non-cancellations:")
-            fig, ax = plt.subplots()
-            sns.boxplot(data=df, x='cancelled', y=top_feature, ax=ax)
-            st.pyplot(fig)
 
 else:
     st.info("Please upload a CSV file to begin analysis")
     st.markdown("""
-    **Expected columns:**
-    - `Status` (to identify cancellations)
-    - `Item Total` or `Amount` (order value)
-    - `Category` (product category)
-    - Optional: `review_text` for sentiment analysis
+    **Installation notes:**
+    - Required: `pip install streamlit pandas textblob scikit-learn numpy`
+    - For advanced features: `pip install imbalanced-learn matplotlib seaborn`
     """)
