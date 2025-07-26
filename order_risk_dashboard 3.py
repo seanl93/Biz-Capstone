@@ -1,14 +1,22 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from textblob import TextBlob
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.inspection import permutation_importance
-import numpy as np
 from sklearn.metrics import classification_report, roc_auc_score
-import matplotlib.pyplot as plt
-import seaborn as sns
+
+# Check for optional visualization packages
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from sklearn.inspection import permutation_importance
+    VISUALS_AVAILABLE = True
+except ImportError:
+    VISUALS_AVAILABLE = False
+    st.warning("Some visualization features are disabled because matplotlib/seaborn are not installed. "
+              "Run `pip install matplotlib seaborn` to enable all features.")
 
 # Configure page
 st.set_page_config(page_title="Cancellation Risk Dashboard", layout="wide")
@@ -78,7 +86,8 @@ if uploaded_file:
     with st.sidebar:
         st.header("Controls")
         threshold = st.slider("Risk Threshold", 0.0, 1.0, 0.3, 0.05)
-        show_technical = st.checkbox("Show Technical Details", False)
+        if not VISUALS_AVAILABLE:
+            st.warning("Install matplotlib/seaborn for visual controls")
 
     # Main dashboard layout
     col1, col2 = st.columns(2)
@@ -95,17 +104,21 @@ if uploaded_file:
         if 'sentiment' in df.columns:
             avg_sentiment = df['sentiment'].mean()
             st.metric(label="Average Sentiment", value=f"{avg_sentiment:.2f}")
-            st.progress((avg_sentiment + 1)/2)  # Scale from -1 to 1 to 0-1
+            if VISUALS_AVAILABLE:
+                st.progress((avg_sentiment + 1)/2)  # Scale from -1 to 1 to 0-1
         else:
             st.info("No review text available")
 
-    # Risk score distribution
-    st.subheader("📈 Risk Score Distribution")
-    fig, ax = plt.subplots()
-    sns.histplot(df['risk_score'], bins=20, kde=True, ax=ax)
-    ax.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold})')
-    ax.legend()
-    st.pyplot(fig)
+    # Risk score distribution - only if visuals available
+    if VISUALS_AVAILABLE:
+        st.subheader("📈 Risk Score Distribution")
+        fig, ax = plt.subplots()
+        sns.histplot(df['risk_score'], bins=20, kde=True, ax=ax)
+        ax.axvline(x=threshold, color='r', linestyle='--', label=f'Threshold ({threshold})')
+        ax.legend()
+        st.pyplot(fig)
+    else:
+        st.write("Risk scores range from", df['risk_score'].min(), "to", df['risk_score'].max())
 
     # Improved AI recommendation function
     def recommend_action(row):
@@ -144,7 +157,11 @@ if uploaded_file:
     # Feature Importance Analysis
     st.subheader("🔍 What Drives Cancellation Risk?")
     
-    tab1, tab2, tab3 = st.tabs(["Technical Analysis", "Business Insights", "Model Performance"])
+    if VISUALS_AVAILABLE:
+        tab1, tab2, tab3 = st.tabs(["Technical Analysis", "Business Insights", "Model Performance"])
+    else:
+        st.write("Technical details require matplotlib/seaborn. Install with: `pip install matplotlib seaborn`")
+        tab1, tab2, tab3 = st.tabs(["Coefficients", "Business Patterns", "Metrics"])
     
     with tab1:
         st.markdown("#### Model Coefficients")
@@ -154,52 +171,64 @@ if uploaded_file:
                 'Coefficient': model.coef_[0],
                 'Absolute_Impact': np.abs(model.coef_[0])
             }).sort_values('Absolute_Impact', ascending=False)
-            st.dataframe(coef_df.style.background_gradient(cmap='RdBu', subset=['Coefficient']))
+            if VISUALS_AVAILABLE:
+                st.dataframe(coef_df.style.background_gradient(cmap='RdBu', subset=['Coefficient']))
+            else:
+                st.dataframe(coef_df)
         
-        st.markdown("#### Permutation Importance")
-        try:
-            perm_importance = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
-            perm_df = pd.DataFrame({
-                'Feature': available_features,
-                'Importance': perm_importance.importances_mean,
-                'Std': perm_importance.importances_std
-            }).sort_values('Importance', ascending=False)
-            
-            st.dataframe(perm_df)
-            fig, ax = plt.subplots()
-            sns.barplot(data=perm_df, x='Importance', y='Feature', ax=ax)
-            st.pyplot(fig)
-        except Exception as e:
-            st.error(f"Couldn't calculate permutation importance: {str(e)}")
+        if VISUALS_AVAILABLE:
+            st.markdown("#### Permutation Importance")
+            try:
+                perm_importance = permutation_importance(model, X_test, y_test, n_repeats=10, random_state=42)
+                perm_df = pd.DataFrame({
+                    'Feature': available_features,
+                    'Importance': perm_importance.importances_mean,
+                    'Std': perm_importance.importances_std
+                }).sort_values('Importance', ascending=False)
+                
+                st.dataframe(perm_df)
+                fig, ax = plt.subplots()
+                sns.barplot(data=perm_df, x='Importance', y='Feature', ax=ax)
+                st.pyplot(fig)
+            except Exception as e:
+                st.error(f"Couldn't calculate permutation importance: {str(e)}")
     
     with tab2:
         st.markdown("#### Business Patterns in High-Risk Orders")
         
         if not filtered.empty:
-            col1, col2 = st.columns(2)
+            if VISUALS_AVAILABLE:
+                cols = st.columns(2)
+                col1, col2 = cols[0], cols[1]
+            else:
+                col1, col2 = st, st
             
             with col1:
                 if 'Category' in df.columns:
                     st.write("Top Categories at Risk:")
                     top_cats = filtered['Category'].value_counts().head(5)
-                    st.bar_chart(top_cats)
+                    if VISUALS_AVAILABLE:
+                        st.bar_chart(top_cats)
+                    else:
+                        st.write(top_cats)
                 
                 if 'dollar_amount' in df.columns:
                     st.write("Price Distribution of High-Risk Orders:")
                     st.write(filtered['dollar_amount'].describe())
             
-            with col2:
-                if 'ship-service-level' in df.columns:
-                    st.write("Risk by Shipping Level:")
-                    shipping_risk = df.groupby('ship-service-level')['risk_score'].mean().sort_values(ascending=False)
-                    st.bar_chart(shipping_risk)
-                
-                if 'rating' in df.columns:
-                    st.write("Average Rating by Risk Level:")
-                    df['risk_level'] = pd.cut(df['risk_score'], bins=[0, 0.3, 0.6, 1], 
-                                            labels=['Low', 'Medium', 'High'])
-                    rating_risk = df.groupby('risk_level')['rating'].mean()
-                    st.bar_chart(rating_risk)
+            if VISUALS_AVAILABLE:
+                with col2:
+                    if 'ship-service-level' in df.columns:
+                        st.write("Risk by Shipping Level:")
+                        shipping_risk = df.groupby('ship-service-level')['risk_score'].mean().sort_values(ascending=False)
+                        st.bar_chart(shipping_risk)
+                    
+                    if 'rating' in df.columns:
+                        st.write("Average Rating by Risk Level:")
+                        df['risk_level'] = pd.cut(df['risk_score'], bins=[0, 0.3, 0.6, 1], 
+                                                labels=['Low', 'Medium', 'High'])
+                        rating_risk = df.groupby('risk_level')['rating'].mean()
+                        st.bar_chart(rating_risk)
     
     with tab3:
         st.markdown("#### Model Evaluation Metrics")
@@ -209,17 +238,22 @@ if uploaded_file:
         st.text(classification_report(y_test, y_pred))
         st.write(f"ROC AUC Score: {roc_auc_score(y_test, y_prob):.3f}")
         
-        # Confusion matrix
-        from sklearn.metrics import confusion_matrix
-        cm = confusion_matrix(y_test, y_pred)
-        fig, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
-                   xticklabels=['Not Cancelled', 'Cancelled'],
-                   yticklabels=['Not Cancelled', 'Cancelled'])
-        ax.set_xlabel('Predicted')
-        ax.set_ylabel('Actual')
-        st.pyplot(fig)
+        if VISUALS_AVAILABLE:
+            # Confusion matrix
+            from sklearn.metrics import confusion_matrix
+            cm = confusion_matrix(y_test, y_pred)
+            fig, ax = plt.subplots()
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                      xticklabels=['Not Cancelled', 'Cancelled'],
+                      yticklabels=['Not Cancelled', 'Cancelled'])
+            ax.set_xlabel('Predicted')
+            ax.set_ylabel('Actual')
+            st.pyplot(fig)
 
 else:
     st.info("👋 Please upload a CSV file to begin analysis. Expected columns include order status, shipping level, and item total.")
-    st.image("https://via.placeholder.com/600x200?text=Upload+Your+Order+Data+CSV", use_column_width=True)
+    st.markdown("""
+    **Installation notes:**
+    - Required: `pip install streamlit pandas textblob scikit-learn numpy`
+    - For visualizations: `pip install matplotlib seaborn`
+    """)
