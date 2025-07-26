@@ -54,15 +54,28 @@ if uploaded_file:
         model.fit(X_train, y_train)
         df['risk_score'] = model.predict_proba(features)[:, 1]
 
+        # Calculate dollar_amount column from 'Item Total'
+        if 'Item Total' in df.columns:
+            df['dollar_amount'] = df['Item Total']
+
         # Streamlit UI
         st.title("Order Cancellation Risk Analysis Dashboard")
 
-        threshold = st.sidebar.slider("Set Risk Threshold", 0.0, 1.0, 0.5, 0.05)
+        st.subheader("📊 All Orders Preview")
+        st.dataframe(df[['Order ID', 'Status', 'Item Total', 'risk_score', 'dollar_amount']].head(10))
+
+        st.write("Min Risk Score:", df['risk_score'].min())
+        st.write("Max Risk Score:", df['risk_score'].max())
+
+        threshold = st.sidebar.slider("Set Risk Threshold", 0.0, 1.0, 0.3, 0.05)
         filtered = df[df['risk_score'] >= threshold]
 
         st.subheader("📦 High-Risk Orders")
-        cols_to_show = [col for col in ['Order ID', 'Category', 'ship-service-level', 'Item Total', 'risk_score'] if col in df.columns]
-        st.dataframe(filtered[cols_to_show])
+        cols_to_show = [col for col in ['Order ID', 'Category', 'ship-service-level', 'Item Total', 'dollar_amount', 'risk_score'] if col in df.columns]
+        if filtered.empty:
+            st.warning("No high-risk orders found at the selected threshold. Try lowering the threshold.")
+        else:
+            st.dataframe(filtered[cols_to_show])
 
         def recommend_action(risk):
             if risk > 0.8:
@@ -75,23 +88,29 @@ if uploaded_file:
         filtered['AI_Suggestion'] = filtered['risk_score'].apply(recommend_action)
 
         st.subheader("🧠 AI-Suggested Actions")
-        cols_to_show = [col for col in ['Order ID', 'ship-service-level', 'Item Total', 'risk_score', 'AI_Suggestion'] if col in filtered.columns]
+        cols_to_show = [col for col in ['Order ID', 'ship-service-level', 'Item Total', 'dollar_amount', 'risk_score', 'AI_Suggestion'] if col in filtered.columns]
         st.dataframe(filtered[cols_to_show])
 
         # Feature Importance
         st.subheader("🔍 Top 5 Features Driving Cancellations")
-        if len(available_features) >= 5:
-            rfe = RFE(model, n_features_to_select=5)
+        try:
+            rfe = RFE(model, n_features_to_select=min(5, len(available_features)))
             rfe.fit(X_train, y_train)
             top_features = [available_features[i] for i in range(len(available_features)) if rfe.support_[i]]
-            st.write(top_features)
-        else:
-            st.write("Not enough features to show importance")
+            if top_features:
+                st.write("Top Features:", top_features)
+            else:
+                st.warning("No features selected by RFE. Try using more data or different features.")
+        except Exception as e:
+            st.error(f"Feature importance calculation failed: {e}")
 
         # Overall sentiment
         st.subheader("💬 Overall Review Sentiment")
-        avg_sentiment = df['sentiment'].mean()
-        st.metric(label="Average Sentiment Score", value=round(avg_sentiment, 3))
+        if 'sentiment' in df.columns:
+            avg_sentiment = df['sentiment'].mean()
+            st.metric(label="Average Sentiment Score", value=round(avg_sentiment, 3))
+        else:
+            st.info("No review text found, so sentiment could not be calculated.")
 
 else:
     st.info("Please upload a CSV file to begin.")
