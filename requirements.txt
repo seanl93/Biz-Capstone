@@ -1,4 +1,8 @@
 streamlit
 pandas
-scikit-learn
+numpy
 textblob
+scikit-learn
+imbalanced-learn
+matplotlib
+seaborn
