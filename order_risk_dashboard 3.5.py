@@ -67,11 +67,21 @@ if uploaded_file:
     # Calculate risk scores
     df['risk_score'] = model.predict_proba(scaler.transform(features))[:, 1]
 
-    # Define risk levels based on percentiles
+    # Redistribute risk levels to ensure 10% of non-cancelled are high risk
+    non_cancelled = df[df['cancelled'] == 0].copy()
+    sorted_nc = non_cancelled.sort_values('risk_score', ascending=False).reset_index(drop=True)
+
+    total_nc = len(sorted_nc)
+    high_cut = int(total_nc * 0.10)  # 10% as high risk
+    medium_cut = int(total_nc * 0.40)  # Next 30% as medium risk (10% + 30% = 40%)
+
+    high_thresh = sorted_nc.loc[high_cut - 1, 'risk_score'] if total_nc > high_cut else 1.0
+    medium_thresh = sorted_nc.loc[medium_cut - 1, 'risk_score'] if total_nc > medium_cut else 0.0
+
     def assign_risk_level(score):
-        if score >= 0.8:
+        if score >= high_thresh:
             return "High"
-        elif score >= 0.5:
+        elif score >= medium_thresh:
             return "Medium"
         else:
             return "Low"
@@ -102,21 +112,33 @@ if uploaded_file:
         st.metric("Cancellation Rate", f"{df['cancelled'].mean()*100:.1f}%")
 
     # Risk level distribution
-    st.subheader("📊 Risk Level Distribution")
-    risk_dist = df['risk_level'].value_counts()
+    st.subheader("📊 Risk Level Distribution (Non-Cancelled Orders)")
+    risk_dist = df[df['cancelled'] == 0]['risk_level'].value_counts(normalize=True).mul(100).round(1)
     st.bar_chart(risk_dist)
+
+    # Risk threshold slider in sidebar
+    with st.sidebar:
+        st.header("Risk Filters")
+        threshold = st.slider(
+            "Minimum Risk Score to Display",
+            min_value=float(df['risk_score'].min()),
+            max_value=float(df['risk_score'].max()),
+            value=0.5,
+            step=0.01
+        )
+        risk_filter = st.multiselect(
+            "Filter by Risk Level",
+            options=['High', 'Medium', 'Low'],
+            default=['High', 'Medium']
+        )
 
     # Filtered orders display
     st.subheader("📦 Risk Orders with AI Recommendations")
     
-    # Filters
-    risk_filter = st.multiselect(
-        "Filter by Risk Level",
-        options=['High', 'Medium', 'Low'],
-        default=['High', 'Medium']
-    )
-    
-    filtered = df[df['risk_level'].isin(risk_filter)].sort_values('risk_score', ascending=False)
+    filtered = df[
+        (df['risk_level'].isin(risk_filter)) & 
+        (df['risk_score'] >= threshold)
+    ].sort_values('risk_score', ascending=False)
     
     # Display all relevant columns automatically
     display_cols = [col for col in df.columns if col not in ['sentiment', 'Category_encoded', 'ship-service-level_encoded']]
@@ -142,13 +164,6 @@ if uploaded_file:
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
-
-    # ROC Curve
-    st.write("**ROC Curve:**")
-    roc_display = RocCurveDisplay.from_estimator(model, X_test_scaled, y_test)
-    plt.plot([0, 1], [0, 1], linestyle='--', label='Random Chance')
-    plt.legend()
-    st.pyplot(plt)
 
     # Feature Importance
     st.subheader("🔍 Top Predictive Features")
