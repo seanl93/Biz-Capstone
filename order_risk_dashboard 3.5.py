@@ -72,12 +72,24 @@ def simple_risk_assessment(df):
     if len(risk_factors) > 0:
         non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
     else:
-        non_cancelled['risk_score'] = 0.3  # Default baseline
+        non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))  # Random baseline
     
-    # Define risk levels
-    non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
-                                        q=[0, 0.7, 0.9, 1], 
-                                        labels=['Low', 'Medium', 'High'])
+    # Add small noise to prevent duplicate values
+    non_cancelled['risk_score'] = non_cancelled['risk_score'] + np.random.normal(0, 0.001, len(non_cancelled))
+    
+    # Define risk levels with robust quantile calculation
+    try:
+        non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
+                                            q=[0, 0.7, 0.9, 1], 
+                                            labels=['Low', 'Medium', 'High'],
+                                            duplicates='drop')
+    except ValueError:
+        # Fallback if quantile calculation fails
+        st.warning("Could not calculate precise risk levels. Using simplified thresholds.")
+        non_cancelled['risk_level'] = np.where(
+            non_cancelled['risk_score'] > 0.8, 'High',
+            np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
+        )
     
     # Add AI suggestions
     non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
@@ -89,9 +101,52 @@ def simple_risk_assessment(df):
 
 def advanced_risk_assessment(df):
     """Advanced risk assessment when cancellations exist"""
-    # This would use your original logistic regression approach
-    # For now, we'll use the same simple method but you can expand this
-    return simple_risk_assessment(df)
+    non_cancelled = df[df['cancelled'] == 0].copy()
+    cancelled = df[df['cancelled'] == 1].copy()
+    
+    # Create risk scores (this would be your logistic regression in a real implementation)
+    # For now using a simple approach similar to simple_risk_assessment
+    risk_factors = []
+    
+    if 'rating' in non_cancelled.columns:
+        risk_factors.append((5 - non_cancelled['rating']) / 4)
+    
+    if 'sentiment' in non_cancelled.columns:
+        risk_factors.append((1 - non_cancelled['sentiment']) / 2)
+    
+    if len(risk_factors) > 0:
+        non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
+    else:
+        non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))
+    
+    # Add small noise to prevent duplicate values
+    non_cancelled['risk_score'] = non_cancelled['risk_score'] + np.random.normal(0, 0.001, len(non_cancelled))
+    
+    # Define risk levels
+    try:
+        non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
+                                            q=[0, 0.7, 0.9, 1], 
+                                            labels=['Low', 'Medium', 'High'],
+                                            duplicates='drop')
+    except ValueError:
+        st.warning("Could not calculate precise risk levels. Using simplified thresholds.")
+        non_cancelled['risk_level'] = np.where(
+            non_cancelled['risk_score'] > 0.8, 'High',
+            np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
+        )
+    
+    # Add AI suggestions
+    non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
+        lambda x: "🟢 No action needed" if x == 'Low' else 
+                 "🟠 Send reassurance email" if x == 'Medium' else 
+                 "🔴 Expedited shipping")
+    
+    # Mark cancelled orders with max risk
+    cancelled['risk_score'] = 1.0
+    cancelled['risk_level'] = 'Cancelled'
+    cancelled['AI_Suggestion'] = "⚫ Already cancelled"
+    
+    return pd.concat([cancelled, non_cancelled])
 
 def show_dashboard(df):
     """Display all dashboard components"""
@@ -117,7 +172,7 @@ def show_dashboard(df):
         if 'risk_level' in df.columns:
             risk_filter = st.multiselect(
                 "Risk Levels",
-                options=['High', 'Medium', 'Low'],
+                options=df[df['cancelled'] == 0]['risk_level'].unique().tolist(),
                 default=['High', 'Medium']
             )
         min_score = st.slider(
@@ -141,7 +196,7 @@ def show_dashboard(df):
     
     # Filter non-cancelled orders with risk scores
     filtered = df[(df['cancelled'] == 0) & (df['risk_score'] >= min_score)]
-    if 'risk_level' in df.columns:
+    if 'risk_level' in df.columns and risk_filter:
         filtered = filtered[filtered['risk_level'].isin(risk_filter)]
     
     # Format dataframe
