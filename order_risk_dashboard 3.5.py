@@ -2,7 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from textblob import TextBlob
-from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.feature_selection import RFE
+from sklearn.metrics import confusion_matrix, roc_auc_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -24,12 +28,11 @@ def main():
     if df['cancelled'].sum() == 0:
         st.warning("No cancelled orders found in dataset. Using simplified risk assessment.")
         df = simple_risk_assessment(df)
+        show_dashboard(df)
     else:
         st.success(f"Found {df['cancelled'].sum()} cancelled orders. Using advanced risk assessment.")
-        df = advanced_risk_assessment(df)
-    
-    # Display dashboard
-    show_dashboard(df)
+        df, model, X_test, y_test = advanced_risk_assessment(df)
+        show_dashboard(df, model, X_test, y_test)
 
 def load_and_preprocess_data(uploaded_file):
     """Load and preprocess the uploaded data"""
@@ -72,7 +75,7 @@ def simple_risk_assessment(df):
     if len(risk_factors) > 0:
         non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
     else:
-        non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))  # Random baseline
+        non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))
     
     # Add small noise to prevent duplicate values
     non_cancelled['risk_score'] = non_cancelled['risk_score'] + np.random.normal(0, 0.001, len(non_cancelled))
@@ -101,28 +104,34 @@ def simple_risk_assessment(df):
 
 def advanced_risk_assessment(df):
     """Advanced risk assessment when cancellations exist"""
+    # Prepare features
+    feature_cols = ['rating', 'sentiment', 'Item Total', 'Category_encoded', 'ship-service-level_encoded']
+    available_features = [col for col in feature_cols if col in df.columns]
+    
+    if not available_features:
+        st.error("No valid feature columns found in your data.")
+        st.stop()
+
+    features = df[available_features].fillna(0)
+    labels = df['cancelled']
+
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
+    
+    # Standardize features
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Train model
+    model = LogisticRegression(max_iter=1000, class_weight='balanced')
+    model.fit(X_train_scaled, y_train)
+    
+    # Calculate risk scores for all orders
+    df['risk_score'] = model.predict_proba(scaler.transform(features))[:, 1]
+    
+    # Define risk levels for non-cancelled orders
     non_cancelled = df[df['cancelled'] == 0].copy()
-    cancelled = df[df['cancelled'] == 1].copy()
-    
-    # Create risk scores (this would be your logistic regression in a real implementation)
-    # For now using a simple approach similar to simple_risk_assessment
-    risk_factors = []
-    
-    if 'rating' in non_cancelled.columns:
-        risk_factors.append((5 - non_cancelled['rating']) / 4)
-    
-    if 'sentiment' in non_cancelled.columns:
-        risk_factors.append((1 - non_cancelled['sentiment']) / 2)
-    
-    if len(risk_factors) > 0:
-        non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
-    else:
-        non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))
-    
-    # Add small noise to prevent duplicate values
-    non_cancelled['risk_score'] = non_cancelled['risk_score'] + np.random.normal(0, 0.001, len(non_cancelled))
-    
-    # Define risk levels
     try:
         non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
                                             q=[0, 0.7, 0.9, 1], 
@@ -141,14 +150,14 @@ def advanced_risk_assessment(df):
                  "🟠 Send reassurance email" if x == 'Medium' else 
                  "🔴 Expedited shipping")
     
-    # Mark cancelled orders with max risk
-    cancelled['risk_score'] = 1.0
+    # Mark cancelled orders
+    cancelled = df[df['cancelled'] == 1].copy()
     cancelled['risk_level'] = 'Cancelled'
     cancelled['AI_Suggestion'] = "⚫ Already cancelled"
     
-    return pd.concat([cancelled, non_cancelled])
+    return pd.concat([cancelled, non_cancelled]), model, X_test_scaled, y_test
 
-def show_dashboard(df):
+def show_dashboard(df, model=None, X_test=None, y_test=None):
     """Display all dashboard components"""
     # Summary statistics
     st.subheader("📊 Risk Distribution Overview")
@@ -206,6 +215,55 @@ def show_dashboard(df):
         filtered['risk_score'] = filtered['risk_score'].round(4)
     
     st.dataframe(filtered[display_cols].sort_values('risk_score', ascending=False))
+
+    # Model evaluation (only if model exists)
+    if model is not None and X_test is not None and y_test is not None:
+        st.subheader("📈 Model Evaluation")
+        
+        # Confusion Matrix
+        st.write("### Confusion Matrix")
+        y_pred = model.predict(X_test)
+        cm = confusion_matrix(y_test, y_pred)
+        
+        fig, ax = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=['Predicted Not Cancelled', 'Predicted Cancelled'],
+                    yticklabels=['Actual Not Cancelled', 'Actual Cancelled'])
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("Actual")
+        st.pyplot(fig)
+        
+        # ROC AUC Score
+        y_prob = model.predict_proba(X_test)[:, 1]
+        st.metric("ROC AUC Score", f"{roc_auc_score(y_test, y_prob):.3f}")
+        
+        # Feature Importance
+        st.write("### Top Predictive Features")
+        try:
+            rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
+            rfe.fit(X_test, y_test)
+            
+            feature_importance = pd.DataFrame({
+                'Feature': available_features,
+                'Importance': rfe.support_,
+                'Ranking': rfe.ranking_
+            }).sort_values('Ranking')
+            
+            st.dataframe(feature_importance[feature_importance['Importance'] == True])
+            
+            # Plot feature coefficients
+            st.write("### Feature Coefficients")
+            coefficients = pd.DataFrame({
+                'Feature': available_features,
+                'Coefficient': model.coef_[0]
+            }).sort_values('Coefficient', ascending=False)
+            
+            plt.figure(figsize=(10, 6))
+            sns.barplot(x='Coefficient', y='Feature', data=coefficients)
+            plt.title('Logistic Regression Coefficients')
+            st.pyplot(plt)
+        except Exception as e:
+            st.warning(f"Could not calculate feature importance: {str(e)}")
 
 if __name__ == "__main__":
     main()
