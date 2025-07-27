@@ -73,9 +73,9 @@ if uploaded_file:
     st.subheader("📦 Medium to High-Risk Orders with AI Suggestions")
 
     def classify_risk(risk_score):
-        if risk_score > 0.8:
+        if risk_score > 0.155:
             return "High"
-        elif risk_score > 0.6:
+        elif risk_score > 0.1:
             return "Medium"
         else:
             return "Low"
