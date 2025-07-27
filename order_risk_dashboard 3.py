@@ -69,29 +69,51 @@ if uploaded_file:
     )
     filtered = df[df['risk_level'].isin(['High', 'Medium', 'Low']) & (df['risk_score'] >= threshold)]
 
-    st.subheader("📦 High-Risk Orders (Medium and High) with AI Suggestions")
+        # --- High-Risk Orders Table ---
+    st.subheader("📦 Medium to High-Risk Orders with AI Suggestions")
+
+    def classify_risk(risk_score):
+        if risk_score > 0.8:
+            return "High"
+        elif risk_score > 0.6:
+            return "Medium"
+        else:
+            return "Low"
+
+    df['risk_level'] = df['risk_score'].apply(classify_risk)
+
+    # Filter to Medium and High only
+    filtered = df[df['risk_level'].isin(['High', 'Medium'])]
+
     if filtered.empty:
-        st.warning("No orders above the threshold.")
+        st.warning("No medium or high-risk orders found.")
     else:
         def ai_suggestion(row):
             if row['risk_level'] == 'High':
                 return "🚨 Suggest Manual Review / Offer Express Shipping"
             elif row['risk_level'] == 'Medium':
                 return "⚠️ Suggest Reassurance Email or Discount"
-            else:
-                return "No action needed"
+            return "No action needed"
 
         filtered['AI_Suggestion'] = filtered.apply(ai_suggestion, axis=1)
-        for _, row in filtered.iterrows():
-            with st.expander(f"Order {row.get('Order ID', 'Unknown')} | Risk: {row['risk_level']} | Score: {row['risk_score']:.2f}"):
-                st.markdown(f"**Ship Level:** {row.get('ship-service-level', '-')}")
-                st.markdown(f"**Amount:** ${row['dollar_amount']:.2f}")
-                st.markdown(f"**Suggested Action:** {row['AI_Suggestion']}")
-                approve = st.checkbox(f"✅ Approve Action for Order {row.get('Order ID', 'N/A')}", key=f"approve_{row.name}")
-                if approve:
-                    st.success("Action approved ✅")
-                else:
-                    st.info("Awaiting action...")
+
+        # Display table of orders with action checkboxes
+        st.write("✅ Review and approve AI suggestions:")
+
+        approval_states = []
+        for idx, row in filtered.iterrows():
+            checkbox_label = f"Approve action for Order {row.get('Order ID', idx)}"
+            approval = st.checkbox(checkbox_label, key=f"approve_{idx}")
+            approval_states.append("Approved ✅" if approval else "Pending ⏳")
+
+        filtered['Approval_Status'] = approval_states
+
+        # Select columns to display
+        display_cols = ['Order ID', 'ship-service-level', 'dollar_amount', 'risk_score', 'risk_level', 'AI_Suggestion', 'Approval_Status']
+        display_cols = [col for col in display_cols if col in filtered.columns]
+
+        st.dataframe(filtered[display_cols].sort_values(by='risk_score', ascending=False).reset_index(drop=True))
+
 
     # AI Metrics
     st.subheader("📈 Model Performance Metrics")
