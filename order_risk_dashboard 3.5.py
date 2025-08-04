@@ -240,10 +240,10 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
 
         # Feature Importance
         st.write("### Top Predictive Features")
-        try:
-        available_features = X_test.columns.tolist()  # 👈 Add this line
-        rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
-        rfe.fit(X_test, y_test)
+          try:
+            available_features = X_test.columns.tolist()  # 👈 Add this line
+            rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
+            rfe.fit(X_test, y_test)
     
        feature_importance = pd.DataFrame({
         'Feature': available_features,
@@ -264,7 +264,7 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     sns.barplot(x='Coefficient', y='Feature', data=coefficients)
     plt.title('Logistic Regression Coefficients')
     st.pyplot(plt)
-except Exception as e:
+    except Exception as e:
     st.warning(f"Could not calculate feature importance: {str(e)}")
 
 
