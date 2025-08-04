@@ -237,16 +237,14 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         st.metric("ROC AUC Score", "0.900")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
 
-
-        # Feature Importance
-     
+# Feature Importance Section
 st.write("### Top Predictive Features")
 
 try:
-    # Get feature names
+    # Get feature names from X_test
     available_features = X_test.columns
 
-    # Run RFE
+    # Run RFE (Recursive Feature Elimination)
     rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
     rfe.fit(X_test, y_test)
 
@@ -257,6 +255,7 @@ try:
         'Ranking': rfe.ranking_
     }).sort_values('Ranking')
 
+    # Show the top features
     st.dataframe(feature_importance[feature_importance['Importance'] == True])
 
     # Plot feature coefficients
@@ -273,14 +272,15 @@ try:
 
 except Exception as e:
     st.warning(f"Could not calculate feature importance: {str(e)}")
+
 # Visualize uploaded coefficient plots
-    st.write("### Coefficient Visualization (External Model Insights)")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
+st.write("### Coefficient Visualization (External Model Insights)")
 
-    with col2:
-          st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
+col1, col2 = st.columns(2)
+with col1:
+    st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
 
+with col2:
+    st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
 if __name__ == "__main__":
     main()
