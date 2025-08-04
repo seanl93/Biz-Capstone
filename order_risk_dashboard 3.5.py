@@ -5,10 +5,10 @@ from textblob import TextBlob
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.feature_selection import RFE
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 # Configure page
 st.set_page_config(page_title="Order Cancellation Risk Dashboard", layout="wide")
@@ -63,38 +63,35 @@ def simple_risk_assessment(df):
     """Simplified risk assessment when no cancellations exist"""
     non_cancelled = df[df['cancelled'] == 0].copy()
     
-    # Create simple risk scores based on available features
     risk_factors = []
     
     if 'rating' in non_cancelled.columns:
-        risk_factors.append((5 - non_cancelled['rating']) / 4)  # Normalize 1-5 to 0-1
+        risk_factors.append((5 - non_cancelled['rating']) / 4)
     
     if 'sentiment' in non_cancelled.columns:
-        risk_factors.append((1 - non_cancelled['sentiment']) / 2)  # Normalize -1 to 1 to 0-1
+        risk_factors.append((1 - non_cancelled['sentiment']) / 2)
     
     if len(risk_factors) > 0:
         non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
     else:
         non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))
     
-    # Add small noise to prevent duplicate values
-    non_cancelled['risk_score'] = non_cancelled['risk_score'] + np.random.normal(0, 0.001, len(non_cancelled))
+    non_cancelled['risk_score'] += np.random.normal(0, 0.001, len(non_cancelled))
     
-    # Define risk levels with robust quantile calculation
     try:
-        non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
-                                            q=[0, 0.7, 0.9, 1], 
-                                            labels=['Low', 'Medium', 'High'],
-                                            duplicates='drop')
+        non_cancelled['risk_level'] = pd.qcut(
+            non_cancelled['risk_score'], 
+            q=[0, 0.7, 0.9, 1], 
+            labels=['Low', 'Medium', 'High'],
+            duplicates='drop'
+        )
     except ValueError:
-        # Fallback if quantile calculation fails
         st.warning("Could not calculate precise risk levels. Using simplified thresholds.")
         non_cancelled['risk_level'] = np.where(
             non_cancelled['risk_score'] > 0.8, 'High',
             np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
         )
     
-    # Add AI suggestions
     non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
         lambda x: "🟢 No action needed" if x == 'Low' else 
                  "🟠 Check inventory" if x == 'Medium' else 
@@ -104,7 +101,6 @@ def simple_risk_assessment(df):
 
 def advanced_risk_assessment(df):
     """Advanced risk assessment when cancellations exist"""
-    # Prepare features
     feature_cols = ['rating', 'sentiment', 'Item Total', 'Category_encoded', 'ship-service-level_encoded']
     available_features = [col for col in feature_cols if col in df.columns]
     
@@ -115,28 +111,25 @@ def advanced_risk_assessment(df):
     features = df[available_features].fillna(0)
     labels = df['cancelled']
 
-    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
     
-    # Standardize features
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Train model
     model = LogisticRegression(max_iter=1000, class_weight='balanced')
     model.fit(X_train_scaled, y_train)
     
-    # Calculate risk scores for all orders
     df['risk_score'] = model.predict_proba(scaler.transform(features))[:, 1]
     
-    # Define risk levels for non-cancelled orders
     non_cancelled = df[df['cancelled'] == 0].copy()
     try:
-        non_cancelled['risk_level'] = pd.qcut(non_cancelled['risk_score'], 
-                                            q=[0, 0.7, 0.9, 1], 
-                                            labels=['Low', 'Medium', 'High'],
-                                            duplicates='drop')
+        non_cancelled['risk_level'] = pd.qcut(
+            non_cancelled['risk_score'], 
+            q=[0, 0.7, 0.9, 1], 
+            labels=['Low', 'Medium', 'High'],
+            duplicates='drop'
+        )
     except ValueError:
         st.warning("Could not calculate precise risk levels. Using simplified thresholds.")
         non_cancelled['risk_level'] = np.where(
@@ -144,13 +137,11 @@ def advanced_risk_assessment(df):
             np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
         )
     
-    # Add AI suggestions
     non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
         lambda x: "🟢 No action needed" if x == 'Low' else 
                  "🟠 Send reassurance email" if x == 'Medium' else 
                  "🔴 Expedited shipping")
     
-    # Mark cancelled orders
     cancelled = df[df['cancelled'] == 1].copy()
     cancelled['risk_level'] = 'Cancelled'
     cancelled['AI_Suggestion'] = "⚫ Already cancelled"
@@ -158,8 +149,6 @@ def advanced_risk_assessment(df):
     return pd.concat([cancelled, non_cancelled]), model, X_test_scaled, y_test
 
 def show_dashboard(df, model=None, X_test=None, y_test=None):
-    """Display all dashboard components"""
-    # Summary statistics
     st.subheader("📊 Risk Distribution Overview")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -169,13 +158,11 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     with col3:
         st.metric("Cancellation Rate", f"{df['cancelled'].mean()*100:.1f}%")
     
-    # Risk level distribution (non-cancelled only)
     if 'risk_level' in df.columns:
         st.subheader("Risk Level Distribution (Non-Cancelled Orders)")
         risk_dist = df[df['cancelled'] == 0]['risk_level'].value_counts(normalize=True)
         st.bar_chart(risk_dist)
 
-    # Filters
     with st.sidebar:
         st.header("🔍 Filters")
         if 'risk_level' in df.columns:
@@ -192,10 +179,7 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
             step=0.01
         )
 
-    # Filtered orders display
     st.subheader("📦 At-Risk Orders")
-    
-    # Get display columns that exist in the dataframe
     possible_cols = [
         'Order ID', 'Date', 'Status', 'Fulfilment', 'Sales Channel',
         'ship-service-level', 'Category', 'Size', 'Courier Status',
@@ -203,12 +187,10 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     ]
     display_cols = [col for col in possible_cols if col in df.columns]
     
-    # Filter non-cancelled orders with risk scores
     filtered = df[(df['cancelled'] == 0) & (df['risk_score'] >= min_score)]
     if 'risk_level' in df.columns and risk_filter:
         filtered = filtered[filtered['risk_level'].isin(risk_filter)]
     
-    # Format dataframe
     if 'Amount' in display_cols:
         filtered['Amount'] = filtered['Amount'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else '')
     if 'risk_score' in display_cols:
@@ -216,10 +198,7 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     
     st.dataframe(filtered[display_cols].sort_values('risk_score', ascending=False))
 
-    # Model evaluation (only if model exists)
     if model is not None and X_test is not None and y_test is not None:
-
-        # Confusion Matrix
         st.write("### Confusion Matrix")
         y_pred = model.predict(X_test)
         cm = confusion_matrix(y_test, y_pred)
@@ -232,19 +211,19 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         ax.set_ylabel("Actual")
         st.pyplot(fig)
         
-        # ROC AUC Score
         y_prob = model.predict_proba(X_test)[:, 1]
         st.metric("ROC AUC Score", "0.900")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
-# Visualize uploaded coefficient plots
-    st.write("### Coefficient Visualization (External Model Insights)")
-# Ensure this part is properly indented
-    col1, col2 = st.columns(2)
-      with col1:
-    st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
-      with col2:
-    st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
-    
-  if __name__ == "__main__":
-    # Any necessary setup or final function calls can go here
+        
+        # Coefficient Visualization at the bottom
+        st.subheader("📉 Coefficient Visualization (External Model Insights)")
+        col1, col2 = st.columns(2)
+        if os.path.exists("top 10 positive coefficients.png"):
+            with col1:
+                st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
+        if os.path.exists("top 10 negative coefficients.png"):
+            with col2:
+                st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
+
+if __name__ == "__main__":
     main()
