@@ -240,12 +240,10 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
 
        # Visualize uploaded coefficient plots
        st.write("### Coefficient Visualization (External Model Insights)")
-
        col1, col2 = st.columns(2)
        with col1:
        st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
-
        with col2:
        st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
-  if __name__ == "__main__":
+    if __name__ == "__main__":
     main()
