@@ -236,14 +236,13 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         y_prob = model.predict_proba(X_test)[:, 1]
         st.metric("ROC AUC Score", "0.900")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
-
 # Visualize uploaded coefficient plots
     st.write("### Coefficient Visualization (External Model Insights)")
 # Ensure this part is properly indented
     col1, col2 = st.columns(2)
-    with col1:
+      with col1:
     st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
-    with col2:
+      with col2:
     st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
     
   if __name__ == "__main__":
