@@ -239,35 +239,40 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
 
 
         # Feature Importance
-        st.write("### Top Predictive Features")
-          try:
-            available_features = X_test.columns.tolist()  # 👈 Add this line
-            rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
-            rfe.fit(X_test, y_test)
-    
-       feature_importance = pd.DataFrame({
+     
+st.write("### Top Predictive Features")
+
+try:
+    # Get feature names
+    available_features = X_test.columns
+
+    # Run RFE
+    rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
+    rfe.fit(X_test, y_test)
+
+    # Create DataFrame of feature importance
+    feature_importance = pd.DataFrame({
         'Feature': available_features,
         'Importance': rfe.support_,
         'Ranking': rfe.ranking_
     }).sort_values('Ranking')
-    
+
     st.dataframe(feature_importance[feature_importance['Importance'] == True])
-  
+
     # Plot feature coefficients
     st.write("### Feature Coefficients")
-      coefficients = pd.DataFrame({
+    coefficients = pd.DataFrame({
         'Feature': available_features,
         'Coefficient': model.coef_[0]
     }).sort_values('Coefficient', ascending=False)
-    
+
     plt.figure(figsize=(10, 6))
     sns.barplot(x='Coefficient', y='Feature', data=coefficients)
     plt.title('Logistic Regression Coefficients')
     st.pyplot(plt)
-    except Exception as e:
+
+except Exception as e:
     st.warning(f"Could not calculate feature importance: {str(e)}")
-
-
 # Visualize uploaded coefficient plots
         st.write("### Coefficient Visualization (External Model Insights)")
 
