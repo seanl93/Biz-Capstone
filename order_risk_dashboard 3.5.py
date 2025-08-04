@@ -218,18 +218,7 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
 
     # Model evaluation (only if model exists)
     if model is not None and X_test is not None and y_test is not None:
-# Visualize uploaded coefficient plots
-        st.write("### Coefficient Visualization (External Model Insights)")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients", use_column_width=True)
-
-        with col2:
-            st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients", use_column_width=True)
-        
-        st.subheader("📈 Model Evaluation")
-        
         # Confusion Matrix
         st.write("### Confusion Matrix")
         y_pred = model.predict(X_test)
@@ -275,7 +264,15 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         except Exception as e:
             st.warning(f"Could not calculate feature importance: {str(e)}")
 
+# Visualize uploaded coefficient plots
+        st.write("### Coefficient Visualization (External Model Insights)")
 
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients", use_column_width=True)
+
+        with col2:
+            st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
 
 if __name__ == "__main__":
     main()
