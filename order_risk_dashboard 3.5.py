@@ -247,4 +247,4 @@ with col1:
 with col2:
     st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
    if __name__ == "__main__":
-     main()
+   main()
