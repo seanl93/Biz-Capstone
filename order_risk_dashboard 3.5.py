@@ -234,10 +234,10 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
             cancellations=('cancelled', 'sum')
         )
         state_summary['cancel_rate'] = state_summary['cancellations'] / state_summary['total_orders']
-        state_summary = state_summary[state_summary['total_orders'] > 30]  # Filter low-volume states
+        state_summary = state_summary[state_summary['total_orders'] > 10]  # Filter low-volume states
         state_summary = state_summary.sort_values('cancel_rate', ascending=False)
 
-        high_risk_states = state_summary[state_summary['cancel_rate'] > 0.2]  # Threshold: >20% cancellation
+        high_risk_states = state_summary[state_summary['cancel_rate'] > 0.05]  # Threshold: >20% cancellation
 
         if not high_risk_states.empty:
             st.write("🔺 The following states have high cancellation rates. Consider hub expansion or process improvement in these areas.")
