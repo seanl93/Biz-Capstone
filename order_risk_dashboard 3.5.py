@@ -275,11 +275,11 @@ except Exception as e:
     st.warning(f"Could not calculate feature importance: {str(e)}")
 # Visualize uploaded coefficient plots
     st.write("### Coefficient Visualization (External Model Insights)")
-      col1, col2 = st.columns(2)
-      with col1:
-          st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
 
-      with col2:
+    with col2:
           st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
 
 if __name__ == "__main__":
