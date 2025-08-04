@@ -225,11 +225,11 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
             with col2:
                 st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
 # Recommended Insights: Hub Expansion
-    if 'State' in df.columns:
+    if 'ship-state' in df.columns:
         st.subheader("📌 Recommended Insights: Hub Expansion Opportunities")
 
         # Compute cancellation stats by state
-        state_summary = df.groupby('State').agg(
+        state_summary = df.groupby('ship-state').agg(
             total_orders=('cancelled', 'count'),
             cancellations=('cancelled', 'sum')
         )
