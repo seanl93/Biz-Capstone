@@ -234,9 +234,8 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         
         # ROC AUC Score
         y_prob = model.predict_proba(X_test)[:, 1]
-       
         st.metric("ROC AUC Score", "0.900")
-st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
+        st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
 
 
         # Feature Importance
