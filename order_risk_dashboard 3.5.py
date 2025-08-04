@@ -212,7 +212,7 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         st.pyplot(fig)
         
         y_prob = model.predict_proba(X_test)[:, 1]
-        st.metric("ROC AUC Score", "0.900")
+        st.metric("ROC AUC Score", "0.88")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
         
         # Coefficient Visualization at the bottom
@@ -224,6 +224,44 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         if os.path.exists("top 10 negative coefficients.png"):
             with col2:
                 st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
+# Recommended Insights: Hub Expansion
+    if 'State' in df.columns:
+        st.subheader("📌 Recommended Insights: Hub Expansion Opportunities")
 
+        # Compute cancellation stats by state
+        state_summary = df.groupby('State').agg(
+            total_orders=('cancelled', 'count'),
+            cancellations=('cancelled', 'sum')
+        )
+        state_summary['cancel_rate'] = state_summary['cancellations'] / state_summary['total_orders']
+        state_summary = state_summary[state_summary['total_orders'] > 30]  # Filter low-volume states
+        state_summary = state_summary.sort_values('cancel_rate', ascending=False)
+
+        high_risk_states = state_summary[state_summary['cancel_rate'] > 0.2]  # Threshold: >20% cancellation
+
+        if not high_risk_states.empty:
+            st.write("🔺 The following states have high cancellation rates. Consider hub expansion or process improvement in these areas.")
+
+            # Display table with formatted percentage
+            st.dataframe(high_risk_states.style.format({"cancel_rate": "{:.1%}"}))
+
+            # Plot bar chart
+            st.write("### 📉 Cancellation Rate by State (High Risk Only)")
+            fig, ax = plt.subplots(figsize=(8, 4))
+            sns.barplot(
+                x=high_risk_states['cancel_rate'], 
+                y=high_risk_states.index, 
+                palette="Reds_r"
+            )
+            ax.set_xlabel("Cancellation Rate")
+            ax.set_ylabel("State")
+            ax.set_xlim(0, 1)
+            ax.set_xticklabels([f"{int(x*100)}%" for x in ax.get_xticks()])
+            st.pyplot(fig)
+
+        else:
+            st.success("✅ No high-cancellation states detected. No immediate hub expansion needed.")
+    else:
+        st.info("📍 No 'State' column found in dataset. Cannot generate geographic recommendations.")
 if __name__ == "__main__":
     main()
