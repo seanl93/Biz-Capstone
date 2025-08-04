@@ -237,50 +237,15 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         st.metric("ROC AUC Score", "0.900")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
 
-# Feature Importance Section
-st.write("### Top Predictive Features")
 
-try:
-    # Get feature names from X_test
-    available_features = X_test.columns
+       # Visualize uploaded coefficient plots
+       st.write("### Coefficient Visualization (External Model Insights)")
 
-    # Run RFE (Recursive Feature Elimination)
-    rfe = RFE(model, n_features_to_select=min(5, X_test.shape[1]))
-    rfe.fit(X_test, y_test)
+       col1, col2 = st.columns(2)
+       with col1:
+       st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
 
-    # Create DataFrame of feature importance
-    feature_importance = pd.DataFrame({
-        'Feature': available_features,
-        'Importance': rfe.support_,
-        'Ranking': rfe.ranking_
-    }).sort_values('Ranking')
-
-    # Show the top features
-    st.dataframe(feature_importance[feature_importance['Importance'] == True])
-
-    # Plot feature coefficients
-    st.write("### Feature Coefficients")
-    coefficients = pd.DataFrame({
-        'Feature': available_features,
-        'Coefficient': model.coef_[0]
-    }).sort_values('Coefficient', ascending=False)
-
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x='Coefficient', y='Feature', data=coefficients)
-    plt.title('Logistic Regression Coefficients')
-    st.pyplot(plt)
-
-except Exception as e:
-    st.warning(f"Could not calculate feature importance: {str(e)}")
-
-# Visualize uploaded coefficient plots
-st.write("### Coefficient Visualization (External Model Insights)")
-
-col1, col2 = st.columns(2)
-with col1:
-    st.image("top 10 positive coefficients.png", caption="Top 10 Positive Coefficients")
-
-with col2:
-    st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
-if __name__ == "__main__":
+       with col2:
+       st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
+  if __name__ == "__main__":
     main()
