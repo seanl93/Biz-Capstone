@@ -238,7 +238,13 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         colors = ['red' if state in ['Odisha', 'Kerala'] else 'lightgrey' for state in top_states.index]
 
         st.write("🔺 Top 15 States by Cancellation Rate (Odisha & Kerala Highlighted)")
-        st.dataframe(top_states.style.format({"cancel_rate": "{:.1%}"}))
+        st.dataframe(
+            top_states.style.format({
+                "total_orders": "{:,.0f}",
+                "cancellations": "{:,.0f}",
+                "cancel_rate": "{:.1%}"
+            })
+        )
 
         st.write("### 📉 Cancellation Rate by State")
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -253,8 +259,6 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         ax.set_xticklabels([f"{int(x * 100)}%" for x in ax.get_xticks()])
         ax.set_title("Top States for Potential Hub Expansion\n(Odisha & Kerala Highlighted)", fontsize=14, pad=15)
         st.pyplot(fig)
-    else:
-        st.info("📍 No 'ship-state' column found in dataset. Cannot generate geographic recommendations.")
 
 if __name__ == "__main__":
     main()
