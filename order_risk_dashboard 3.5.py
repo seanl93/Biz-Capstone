@@ -152,12 +152,11 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     st.subheader("📊 Risk Distribution Overview")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Total Orders", len(df))
+        st.metric("Total Orders", f"{len(df):,}")
     with col2:
-        st.metric("Cancelled Orders", df['cancelled'].sum())
+        st.metric("Cancelled Orders", f"{df['cancelled'].sum():,}")
     with col3:
         st.metric("Cancellation Rate", f"{df['cancelled'].mean()*100:.1f}%")
-    
     if 'risk_level' in df.columns:
         st.subheader("Risk Level Distribution (Non-Cancelled Orders)")
         risk_dist = df[df['cancelled'] == 0]['risk_level'].value_counts(normalize=True)
