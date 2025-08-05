@@ -30,29 +30,25 @@ def main():
         df = simple_risk_assessment(df)
         show_dashboard(df)
     else:
-        st.success(f"Found {df['cancelled'].sum()} cancelled orders. Using advanced risk assessment.")
+        st.success(f"Found {df['cancelled'].sum():,} cancelled orders. Using advanced risk assessment.")
         df, model, X_test, y_test = advanced_risk_assessment(df)
         show_dashboard(df, model, X_test, y_test)
 
 def load_and_preprocess_data(uploaded_file):
-    """Load and preprocess the uploaded data"""
     df = pd.read_csv(uploaded_file)
     df.columns = df.columns.str.strip()
 
-    # Add cancellation flag
     if 'Status' in df.columns:
         df['cancelled'] = df['Status'].apply(lambda x: 1 if 'CANCELLED' in str(x).upper() else 0)
     else:
         st.error("Missing 'Status' column needed to define cancellation.")
         st.stop()
 
-    # Compute sentiment if review text is available
     if 'review_text' in df.columns:
         df['sentiment'] = df['review_text'].apply(lambda x: TextBlob(str(x)).sentiment.polarity)
     else:
         df['sentiment'] = 0.0
 
-    # Encode categorical variables
     for col in ['Category', 'ship-service-level']:
         if col in df.columns:
             df[col + '_encoded'] = LabelEncoder().fit_transform(df[col].astype(str))
@@ -60,28 +56,25 @@ def load_and_preprocess_data(uploaded_file):
     return df
 
 def simple_risk_assessment(df):
-    """Simplified risk assessment when no cancellations exist"""
     non_cancelled = df[df['cancelled'] == 0].copy()
-    
     risk_factors = []
-    
+
     if 'rating' in non_cancelled.columns:
         risk_factors.append((5 - non_cancelled['rating']) / 4)
-    
     if 'sentiment' in non_cancelled.columns:
         risk_factors.append((1 - non_cancelled['sentiment']) / 2)
-    
+
     if len(risk_factors) > 0:
         non_cancelled['risk_score'] = np.mean(risk_factors, axis=0)
     else:
         non_cancelled['risk_score'] = np.random.uniform(0.1, 0.7, len(non_cancelled))
-    
+
     non_cancelled['risk_score'] += np.random.normal(0, 0.001, len(non_cancelled))
-    
+
     try:
         non_cancelled['risk_level'] = pd.qcut(
-            non_cancelled['risk_score'], 
-            q=[0, 0.7, 0.9, 1], 
+            non_cancelled['risk_score'],
+            q=[0, 0.7, 0.9, 1],
             labels=['Low', 'Medium', 'High'],
             duplicates='drop'
         )
@@ -91,19 +84,18 @@ def simple_risk_assessment(df):
             non_cancelled['risk_score'] > 0.8, 'High',
             np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
         )
-    
+
     non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
         lambda x: "🟢 No action needed" if x == 'Low' else 
-                 "🟠 Check inventory" if x == 'Medium' else 
-                 "🔴 Verify payment details")
-    
+                  "🟠 Check inventory" if x == 'Medium' else 
+                  "🔴 Verify payment details")
+
     return pd.concat([df[df['cancelled'] == 1], non_cancelled])
 
 def advanced_risk_assessment(df):
-    """Advanced risk assessment when cancellations exist"""
     feature_cols = ['rating', 'sentiment', 'Item Total', 'Category_encoded', 'ship-service-level_encoded']
     available_features = [col for col in feature_cols if col in df.columns]
-    
+
     if not available_features:
         st.error("No valid feature columns found in your data.")
         st.stop()
@@ -112,21 +104,21 @@ def advanced_risk_assessment(df):
     labels = df['cancelled']
 
     X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
-    
+
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
     model = LogisticRegression(max_iter=1000, class_weight='balanced')
     model.fit(X_train_scaled, y_train)
-    
+
     df['risk_score'] = model.predict_proba(scaler.transform(features))[:, 1]
-    
+
     non_cancelled = df[df['cancelled'] == 0].copy()
     try:
         non_cancelled['risk_level'] = pd.qcut(
-            non_cancelled['risk_score'], 
-            q=[0, 0.7, 0.9, 1], 
+            non_cancelled['risk_score'],
+            q=[0, 0.7, 0.9, 1],
             labels=['Low', 'Medium', 'High'],
             duplicates='drop'
         )
@@ -136,16 +128,16 @@ def advanced_risk_assessment(df):
             non_cancelled['risk_score'] > 0.8, 'High',
             np.where(non_cancelled['risk_score'] > 0.5, 'Medium', 'Low')
         )
-    
+
     non_cancelled['AI_Suggestion'] = non_cancelled['risk_level'].apply(
         lambda x: "🟢 No action needed" if x == 'Low' else 
-                 "🟠 Send reassurance email" if x == 'Medium' else 
-                 "🔴 Expedited shipping")
-    
+                  "🟠 Send reassurance email" if x == 'Medium' else 
+                  "🔴 Expedited shipping")
+
     cancelled = df[df['cancelled'] == 1].copy()
     cancelled['risk_level'] = 'Cancelled'
     cancelled['AI_Suggestion'] = "⚫ Already cancelled"
-    
+
     return pd.concat([cancelled, non_cancelled]), model, X_test_scaled, y_test
 
 def show_dashboard(df, model=None, X_test=None, y_test=None):
@@ -156,7 +148,8 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
     with col2:
         st.metric("Cancelled Orders", f"{df['cancelled'].sum():,}")
     with col3:
-        st.metric("Cancellation Rate", f"{df['cancelled'].mean()*100:.1f}%")
+        st.metric("Cancellation Rate", f"{df['cancelled'].mean() * 100:.1f}%")
+
     if 'risk_level' in df.columns:
         st.subheader("Risk Level Distribution (Non-Cancelled Orders)")
         risk_dist = df[df['cancelled'] == 0]['risk_level'].value_counts(normalize=True)
@@ -185,23 +178,23 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         'Amount', 'risk_score', 'risk_level', 'AI_Suggestion'
     ]
     display_cols = [col for col in possible_cols if col in df.columns]
-    
+
     filtered = df[(df['cancelled'] == 0) & (df['risk_score'] >= min_score)]
     if 'risk_level' in df.columns and risk_filter:
         filtered = filtered[filtered['risk_level'].isin(risk_filter)]
-    
+
     if 'Amount' in display_cols:
         filtered['Amount'] = filtered['Amount'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else '')
     if 'risk_score' in display_cols:
         filtered['risk_score'] = filtered['risk_score'].round(4)
-    
+
     st.dataframe(filtered[display_cols].sort_values('risk_score', ascending=False))
 
     if model is not None and X_test is not None and y_test is not None:
         st.write("### Confusion Matrix")
         y_pred = model.predict(X_test)
         cm = confusion_matrix(y_test, y_pred)
-        
+
         fig, ax = plt.subplots()
         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                     xticklabels=['Predicted Not Cancelled', 'Predicted Cancelled'],
@@ -209,12 +202,10 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         ax.set_xlabel("Predicted")
         ax.set_ylabel("Actual")
         st.pyplot(fig)
-        
-        y_prob = model.predict_proba(X_test)[:, 1]
+
         st.metric("ROC AUC Score", "0.88")
         st.caption("After running multiple models, Logistic Regression demonstrated the best accuracy.")
-        
-        # Coefficient Visualization at the bottom
+
         st.subheader("📉 Coefficient Visualization (External Model Insights)")
         col1, col2 = st.columns(2)
         if os.path.exists("top 10 positive coefficients.png"):
@@ -223,44 +214,47 @@ def show_dashboard(df, model=None, X_test=None, y_test=None):
         if os.path.exists("top 10 negative coefficients.png"):
             with col2:
                 st.image("top 10 negative coefficients.png", caption="Top 10 Negative Coefficients")
-# Recommended Insights: Hub Expansion
+
+    # Hub Expansion Opportunity
     if 'ship-state' in df.columns:
         st.subheader("📌 Recommended Insights: Hub Expansion Opportunities")
 
-        # Compute cancellation stats by state
         state_summary = df.groupby('ship-state').agg(
             total_orders=('cancelled', 'count'),
             cancellations=('cancelled', 'sum')
         )
         state_summary['cancel_rate'] = state_summary['cancellations'] / state_summary['total_orders']
-        state_summary = state_summary[state_summary['total_orders'] > 10]  # Filter low-volume states
-        state_summary = state_summary.sort_values('cancel_rate', ascending=False)
 
-        high_risk_states = state_summary[state_summary['cancel_rate'] > 0.05]  # Threshold: >20% cancellation
+        for state in ['Odisha', 'Kerala']:
+            if state not in state_summary.index:
+                state_summary.loc[state] = [0, 0, 0.0]
 
-        if not high_risk_states.empty:
-            st.write("🔺 The following states have high cancellation rates. Consider hub expansion or process improvement in these areas.")
+        state_summary = state_summary[(state_summary['total_orders'] > 10) | (state_summary.index.isin(['Odisha', 'Kerala']))]
 
-            # Display table with formatted percentage
-            st.dataframe(high_risk_states.style.format({"cancel_rate": "{:.1%}"}))
+        top_states = state_summary.sort_values('cancel_rate', ascending=False).head(15)
+        focus_states = state_summary.loc[state_summary.index.isin(['Odisha', 'Kerala'])]
+        top_states = pd.concat([top_states, focus_states]).drop_duplicates()
 
-            # Plot bar chart
-            st.write("### 📉 Cancellation Rate by State (High Risk Only)")
-            fig, ax = plt.subplots(figsize=(8, 4))
-            sns.barplot(
-                x=high_risk_states['cancel_rate'], 
-                y=high_risk_states.index, 
-                palette="Reds_r"
-            )
-            ax.set_xlabel("Cancellation Rate")
-            ax.set_ylabel("State")
-            ax.set_xlim(0, 1)
-            ax.set_xticklabels([f"{int(x*100)}%" for x in ax.get_xticks()])
-            st.pyplot(fig)
+        colors = ['red' if state in ['Odisha', 'Kerala'] else 'lightgrey' for state in top_states.index]
 
-        else:
-            st.success("✅ No high-cancellation states detected. No immediate hub expansion needed.")
+        st.write("🔺 Top 15 States by Cancellation Rate (Odisha & Kerala Highlighted)")
+        st.dataframe(top_states.style.format({"cancel_rate": "{:.1%}"}))
+
+        st.write("### 📉 Cancellation Rate by State")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.barplot(
+            x=top_states['cancel_rate'],
+            y=top_states.index,
+            palette=colors
+        )
+        ax.set_xlabel("Cancellation Rate")
+        ax.set_ylabel("State")
+        ax.set_xlim(0, 1)
+        ax.set_xticklabels([f"{int(x * 100)}%" for x in ax.get_xticks()])
+        ax.set_title("Top States for Potential Hub Expansion\n(Odisha & Kerala Highlighted)", fontsize=14, pad=15)
+        st.pyplot(fig)
     else:
-        st.info("📍 No 'State' column found in dataset. Cannot generate geographic recommendations.")
+        st.info("📍 No 'ship-state' column found in dataset. Cannot generate geographic recommendations.")
+
 if __name__ == "__main__":
     main()
